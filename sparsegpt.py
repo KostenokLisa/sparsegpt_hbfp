@@ -6,6 +6,12 @@ import torch.nn as nn
 import transformers
 
 from quant import *
+import sys
+sys.path.append("/parsadata1/lisa/transformers_hbfp_sparsity/src/transformers/bfp/")
+print(sys.path)
+
+import bfp_ops
+from bfp_ops import float_to_bfp_blocked
 
 
 DEBUG = False 
@@ -14,9 +20,44 @@ torch.backends.cuda.matmul.allow_tf32 = False
 torch.backends.cudnn.allow_tf32 = False
 
 
+def unpack_bfp_args(**kwargs):
+    """
+    Set up the bfp arguments
+    """
+    bfp_args = {}
+    bfp_argn = [('num_format', 'bfp'),
+                ('sparsity_num_format', 'bfp'),
+                ('rounding_mode', 'stoc'),
+                ('epsilon', 1e-8),
+                ('mant_bits', 7),
+                ('bfp_tile_size', 8),
+                ('bfp_block_size', 64),
+                ('weight_mant_bits', 15),
+                ('in_sparsity', False),
+                ('w_sparsity', False),
+                ('grad_sparsity', False),
+                ('N', [2]),
+                ('M', [4]),
+                ('rearrange', False),
+                ('sparsity_frac', 0.5),
+                ('unconstrained', False),
+                ('bit_range', []),
+                ('exceptions', []),
+                ('device', 'cuda')]
+
+    for arg, default in bfp_argn:
+        if arg in kwargs:
+            bfp_args[arg] = kwargs[arg]
+            del kwargs[arg]
+        else:
+            bfp_args[arg] = default
+    # print(bfp_args)
+    return bfp_args
+
+
 class SparseGPT:
 
-    def __init__(self, layer):
+    def __init__(self, layer, wbits):
         self.layer = layer
         self.dev = self.layer.weight.device
         W = layer.weight.data.clone()
@@ -28,6 +69,7 @@ class SparseGPT:
         self.columns = W.shape[1]
         self.H = torch.zeros((self.columns, self.columns), device=self.dev)
         self.nsamples = 0
+        self.bfp_args = unpack_bfp_args(mant_bits=wbits)
 
     def add_batch(self, inp, out, blocksize=1024):
         if DEBUG:
@@ -49,6 +91,7 @@ class SparseGPT:
         self, sparsity, prunen=0, prunem=0, blocksize=128, percdamp=.01
     ):
         W = self.layer.weight.data.clone()
+        W = float_to_bfp_blocked(W, **self.bfp_args)
         if isinstance(self.layer, nn.Conv2d):
             W = W.flatten(1)
         if isinstance(self.layer, transformers.Conv1D):
@@ -110,10 +153,10 @@ class SparseGPT:
                 q = w.clone()
                 q[mask1[:, i]] = 0
 
-                if hasattr(self, 'quantizer'):
-                    q = quantize(
-                        q.unsqueeze(1), self.quantizer.scale, self.quantizer.zero, self.quantizer.maxq
-                    ).flatten()
+                # if hasattr(self, 'quantizer'):
+                    # q = quantize(
+                    #     q.unsqueeze(1), self.quantizer.scale, self.quantizer.zero, self.quantizer.maxq
+                    # ).flatten()
 
                 Q1[:, i] = q
                 Losses1[:, i] = (w - q) ** 2 / d ** 2
@@ -139,6 +182,9 @@ class SparseGPT:
 
         if isinstance(self.layer, transformers.Conv1D):
             W = W.t()
+        # W = W.reshape(self.layer.weight.shape)
+        # W_q = float_to_bfp_blocked(W, **self.bfp_args)
+        # self.layer.weight.data = W_q.to(self.layer.weight.data.dtype)
         self.layer.weight.data = W.reshape(self.layer.weight.shape).to(self.layer.weight.data.dtype)
         if DEBUG:
             print(torch.sum((self.layer(self.inp1) - self.out1) ** 2))

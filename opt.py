@@ -88,12 +88,12 @@ def opt_sequential(model, dataloader, dev):
         for name in subset:
             if (not (args.minlayer <= i < args.maxlayer and args.prune_only in name)) == (not args.invert):
               continue
-            gpts[name] = SparseGPT(subset[name])
-            if args.wbits < 16:
-                gpts[name].quantizer = Quantizer()
-                gpts[name].quantizer.configure(
-                    args.wbits, perchannel=True, sym=False, mse=False
-                )
+            gpts[name] = SparseGPT(subset[name], args.wbits)
+            # if args.wbits < 16:
+            #     gpts[name].quantizer = Quantizer()
+            #     gpts[name].quantizer.configure(
+            #         args.wbits, perchannel=True, sym=False, mse=False
+            #     )
 
         def add_batch(name):
             def tmp(_, inp, out):
@@ -133,6 +133,8 @@ def opt_eval(model, testenc, dev, dataset: str, log_wandb: bool = False):
 
     testenc = testenc.input_ids
     nsamples = testenc.numel() // model.seqlen
+    print(len(testenc))
+    print("numel ", testenc.numel(), " model seqlen ", model.seqlen)
 
     use_cache = model.config.use_cache
     model.config.use_cache = False
@@ -208,6 +210,7 @@ def opt_eval(model, testenc, dev, dataset: str, log_wandb: bool = False):
 
     testenc = testenc.to(dev)
     nlls = []
+    print(nsamples)
     for i in range(nsamples):
         hidden_states = inps[i].unsqueeze(0)
         if model.model.decoder.final_layer_norm is not None:
@@ -329,7 +332,7 @@ if __name__ == '__main__':
                 break
         print(time.time() - tick)
 
-    for dataset in ['wikitext2', 'ptb', 'c4']:
+    for dataset in ['wikitext2']:
         dataloader, testloader = get_loaders(
             dataset, seed=args.seed, model=args.model, seqlen=model.seqlen
         )
@@ -338,3 +341,14 @@ if __name__ == '__main__':
 
     if args.save:
         model.save_pretrained(args.save)
+
+    # print("---------------------------Dense model-------------------------------------------------")
+    # dense_model = OPTForCausalLM.from_pretrained('facebook/opt-125m', torch_dtype='auto').to(device)
+    # dense_model.eval()
+    # args.sparsity = 0
+    # for dataset in ['wikitext2', 'ptb']:
+    #     dataloader, testloader = get_loaders(
+    #         dataset, seed=args.seed, model=dense_model, seqlen=model.seqlen
+    #     )
+    #     print(dataset)
+    #     opt_eval(dense_model, testloader, DEV, dataset, args.log_wandb)

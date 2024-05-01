@@ -3,25 +3,30 @@ import random
 import numpy as np
 import torch
 from datasets import load_dataset
-from transformers import AutoTokenizer, LlamaTokenizer
+# from transformers import AutoTokenizer, LlamaTokenizer
+from transformers import AutoTokenizer
 
 
 def set_seed(seed):
     np.random.seed(seed)
     torch.random.manual_seed(seed)
 
+# def get_tokenizer(model):
+#     if "llama" in model.lower():
+#         tokenizer = LlamaTokenizer.from_pretrained(model, use_fast=False)
+#         # fix for transformer 4.28.0.dev0 compatibility
+#         if tokenizer.bos_token_id != 1 or tokenizer.eos_token_id != 2:
+#             try:
+#                 tokenizer.bos_token_id = 1
+#                 tokenizer.eos_token_id = 2
+#             except AttributeError:
+#                 pass
+#     else:
+#         tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
+#     return tokenizer
+
 def get_tokenizer(model):
-    if "llama" in model.lower():
-        tokenizer = LlamaTokenizer.from_pretrained(model, use_fast=False)
-        # fix for transformer 4.28.0.dev0 compatibility
-        if tokenizer.bos_token_id != 1 or tokenizer.eos_token_id != 2:
-            try:
-                tokenizer.bos_token_id = 1
-                tokenizer.eos_token_id = 2
-            except AttributeError:
-                pass
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
+    tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
     return tokenizer
 
 def get_wikitext2(nsamples, seed, seqlen, model, tokenizer):
@@ -63,10 +68,10 @@ def get_ptb(nsamples, seed, seqlen, model, tokenizer):
 
 def get_c4(nsamples, seed, seqlen, model, tokenizer):
     traindata = load_dataset(
-        'allenai/c4', 'allenai--c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train'
+        'allenai/c4', 'allenai--c4', data_files={'train': 'en/c4-train.00000-of-01024.json.gz'}, split='train', ignore_verifications=True
     )
     valdata = load_dataset(
-        'allenai/c4', 'allenai--c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation'
+        'allenai/c4', 'allenai--c4', data_files={'validation': 'en/c4-validation.00000-of-00008.json.gz'}, split='validation', ignore_verifications=True
     )
 
     random.seed(seed)

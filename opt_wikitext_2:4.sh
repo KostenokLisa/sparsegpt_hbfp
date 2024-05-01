@@ -1,0 +1,1 @@
+python3 opt.py facebook/opt-13b wikitext2 --sparsity 0.5 --save /parsadata1/lisa/experiments/sparse_opt/13b/gmp-opt-13b --gmp
